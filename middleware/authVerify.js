@@ -2,7 +2,7 @@ require("dotenv").config()
 const jwt = require('jsonwebtoken')
 
 const authVerify = async (req, res, next) => {
-    console.log("masuk middleware");
+    console.log("masuk middleware auth");
     const authHeader = req.headers.authorization
 
     if (!authHeader || !authHeader.startsWith("Bearer")) return res.status(401).json({ message: "Token Tidak Ditemukan" })

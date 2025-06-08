@@ -10,6 +10,7 @@ const bcryptjs = require('bcryptjs')
 const { User, Barang } = require('./schema')
 const ms = require('ms')
 const authVerify = require('./middleware/authVerify')
+const cekRole = require('./middleware/cekRole')
 
 const connect = async () => {
     await mongoose.connect(`mongodb://${process.env.MONGO_URL}`)
@@ -33,7 +34,8 @@ const authRoutes = () => {
             return res.status(200).json({ message: "berhasil registrasi" })
 
         } catch (error) {
-            return res.status(500).json({ message: "server error" })
+            return res.status(500).json({ message: error.message })
+
         }
 
     })
@@ -79,7 +81,8 @@ const authRoutes = () => {
             })
 
         } catch (error) {
-            return res.status(500).json({ message: "server error" })
+            return res.status(500).json({ message: error.message })
+
         }
 
     })
@@ -107,7 +110,8 @@ const authRoutes = () => {
             return res.status(200).json({ message: "Berhasil Logout" })
 
         } catch (error) {
-            return res.status(500).json({ message: "server error" })
+            return res.status(500).json({ message: error.message })
+
         }
     })
 
@@ -131,7 +135,8 @@ const authRoutes = () => {
             req.cookies.access_token = newAccessToken
             return res.status(200).json({ message: "Berhasil Refresh Token" })
         } catch (error) {
-            return res.status(500).json(error)
+            return res.status(500).json({ message: error.message })
+
         }
 
     })
@@ -142,20 +147,20 @@ const authRoutes = () => {
 }
 
 const masterBarangRoutes = () => {
-    app.get("/api/barang", async (req, res) => {
+    app.get("/api/barang", [authVerify, cekRole], async (req, res) => {
         try {
-            const result = await Barang.find().select("-__v")
+            const result = await Barang.find().select("-__v").sort({ createdAt: -1 })
             return res.status(200).json(result)
         } catch (error) {
-            return res.status(500).json({ message: "Server Error" })
+            return res.status(500).json({ message: error.message })
+
         }
     })
-    app.post("/api/barang", async (req, res) => {
+    app.post("/api/barang", [authVerify, cekRole], async (req, res) => {
         const { nama_barang, harga } = req.body
 
         try {
-            const cariBarang = await Barang.findOne({ nama_barang: nama_barang })
-
+            const cariBarang = await Barang.findOne({ nama_barang: nama_barang.toLowerCase() })
             if (cariBarang) return res.status(404).json({ message: `Barang ${nama_barang} sudah terdaftar` })
 
             const barangBaru = new Barang({ nama_barang, harga: Number(harga) })
@@ -163,14 +168,63 @@ const masterBarangRoutes = () => {
 
             return res.status(200).json({ message: `Berhasil Tambah Barang ${nama_barang}` })
         } catch (error) {
-            return res.status(500).json({ message: "Server Error" })
+            return res.status(500).json({ message: error.message })
+
         }
     })
-    app.put("/api/barang/:id",async(req,res) => {
-        
-     })
+    app.put("/api/barang/:id", [authVerify, cekRole], async (req, res) => {
+        const { id } = req.params
+        const { nama_barang, harga } = req.body
 
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "ID tidak valid" })
+        }
+
+        try {
+            const cariBarang = await Barang.findById(id)
+            if (!cariBarang) {
+                return res.status(404).json({ message: `Barang id: ${id} tidak ditemukan` })
+            }
+
+            const cekValidNama = await Barang.findOne({
+                nama_barang: nama_barang,
+                _id: { $ne: id }
+            })
+
+            if (cekValidNama) {
+                return res.status(400).json({ message: `Barang ${nama_barang} sudah terdaftar, silakan pakai nama lain.` })
+            }
+
+            cariBarang.nama_barang = nama_barang
+            cariBarang.harga = Number(harga)
+            await cariBarang.save()
+
+            return res.status(200).json({ message: `Berhasil update barang ${cariBarang.nama_barang}` })
+        } catch (error) {
+            return res.status(500).json({ message: error.message })
+        }
+    })
+
+    app.delete("/api/barang/:id", [authVerify, cekRole], async (req, res) => {
+        const { id } = req.params
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "ID tidak valid" })
+        }
+        try {
+            const cariBarang = await Barang.findById(id)
+            if (!cariBarang) return res.status(404).json({ message: `Barang id: ${id} tidak ditemukan` })
+            await cariBarang.deleteOne()
+            return res.status(200).json({ message: `Barang dengan id: ${id} berhasil dihapus` })
+        } catch (error) {
+            return res.status(500).json({ message: error.message })
+        }
+    })
 }
+
+
+
+
+
 const main = async () => {
     app.use(express.urlencoded({ extended: true }))
     app.use(cookieParser())
