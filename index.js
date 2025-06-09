@@ -7,7 +7,7 @@ const cookieParser = require('cookie-parser')
 const mongoose = require('mongoose')
 const jwt = require('jsonwebtoken')
 const bcryptjs = require('bcryptjs')
-const { User, Barang } = require('./schema')
+const { User, Barang, Transaksi } = require('./schema')
 const ms = require('ms')
 const authVerify = require('./middleware/authVerify')
 const cekRole = require('./middleware/cekRole')
@@ -23,13 +23,13 @@ const connect = async () => {
 
 const authRoutes = () => {
     app.post("/api/register", async (req, res) => {
-        const { email, username, password, role } = req.body
+        const { email, username, password } = req.body
         try {
             const cariuser = await User.findOne({ email: email })
             if (cariuser) {
                 return res.status(404).json({ message: `email sudah terdaftar` })
             }
-            const userBaru = new User({ email, username, password, role })
+            const userBaru = new User({ email, username, password, role: "member" })
             await userBaru.save()
             return res.status(200).json({ message: "berhasil registrasi" })
 
@@ -222,7 +222,84 @@ const masterBarangRoutes = () => {
 }
 
 
+const masterUserRoutes = () => {
+    app.get("/api/user", [authVerify, cekRole], async (req, res) => {
+        try {
+            const result = await User.find().sort({ createdAt: -1 })
+            return res.status(200).json(result)
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({ message: error })
+        }
+    })
+    app.post("/api/user", [authVerify, cekRole], async (req, res) => {
+        const { email, username, password, role } = req.body
+        try {
+            const cariUser = await User.findOne({ email: email })
+            console.log(cariUser);
+            if (cariUser) return res.status(404).json({ message: `Email : ${email} sudah terdaftar` })
+            const userBaru = new User({ email, username, password, role })
+            await userBaru.save()
+            return res.status(200).json({ message: `Berhasil Register User : ${username}` })
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({ message: error })
+        }
+    })
+    app.delete("/api/user/:id", [authVerify, cekRole], async (req, res) => {
+        const { id } = req.params
+        try {
+            const cariUser = await User.findById(id)
+            if (!cariUser) return res.status(404).json({ message: `Id : ${id} tidak ditemukan ` })
+            await cariUser.deleteOne()
+            return res.status(200).json({ message: `User id: ${id} berhasil di hapus` })
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({ message: error })
+        }
+    })
+    app.put("/api/user/:id", [authVerify, cekRole], async (req, res) => {
+        const { id } = req.params
+        const { username, password, email, role } = req.body
+        try {
+            const cariUser = await User.findById(id)
+            if (!cariUser) return res.status(404).json({ message: `Id : ${id} tidak ditemukan ` })
+            const cekValidNama = await User.findOne({
+                email: email,
+                _id: { $ne: id }
+            })
+            if (cekValidNama) {
+                return res.status(400).json({ message: `Email ${email} sudah terdaftar, silakan pakai email lain.` })
+            }
+            cariUser.username = username
+            cariUser.password = password
+            cariUser.email = email
+            cariUser.role = role
+            await cariUser.save()
+            return res.status(200).json({ message: `User id: ${id} berhasil di update` })
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({ message: error })
+        }
+    })
+}
 
+const masterTransactionRoutes = () => {
+    app.post("/api/transaction", [authVerify], async (req, res) => {
+        const { detail } = req.body
+        const user = req.user
+        console.log(req.user);
+        console.log(detail);
+        try {
+            const transaksiBaru = new Transaksi({ email: user.email, username: user.username, detail })
+            await transaksiBaru.save()
+            return res.status(200).json({ message: `Berhasil Melakukan Pembayaran Id transaksi : ${transaksiBaru._id} ` })
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({ message: error })
+        }
+    })
+}
 
 
 const main = async () => {
@@ -236,6 +313,8 @@ const main = async () => {
     await connect()
     authRoutes()
     masterBarangRoutes()
+    masterUserRoutes()
+    masterTransactionRoutes()
     app.listen(port, () => {
         console.log("berhasil run yeay");
 
